@@ -18,25 +18,29 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 st.set_page_config(page_title="日報掲示板", layout="centered")
 
 # ==========================================
-# 【新規追加】UIをスマホアプリらしくする魔法のCSS
+# 【修正】スマホ特化・横スクロール防止CSS
 # ==========================================
 st.markdown("""
 <style>
-/* スマホ画面でカラムが縦積みになるのを防ぎ、横並びを強制する */
+/* 画面外へのはみ出し（横スクロール）を完全に防止 */
+.block-container {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+}
+
+/* スマホ画面での縦積みを解除し、指定した比率（3等分や5等分）を維持する */
 @media (max-width: 640px) {
-    [data-testid="stHorizontalBlock"] {
-        flex-wrap: nowrap !important;
+    div[data-testid="column"] {
+        min-width: 0 !important; /* Streamlitの「スマホは全部横幅100%」という強制ルールを解除 */
     }
-    [data-testid="column"] {
-        min-width: 0 !important;
-        width: auto !important;
-        flex: 1 1 0% !important;
+    div[data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important; /* 万が一はみ出した場合は折り返す */
     }
 }
 
-/* 全体的なボタンの余白を削って、スマホでも押しやすいコンパクトサイズに */
+/* ボタンの余白を削り、スマホで押しやすくスタイリッシュなサイズに */
 .stButton > button {
-    padding: 0.2rem 0.5rem !important;
+    padding: 0.3rem 0.2rem !important;
     min-height: 2.5rem !important;
 }
 </style>
@@ -102,6 +106,7 @@ def add_num(num):
 def clear_num():
   st.session_state["numpad_pin"] = ""
 
+
 # --- ログイン画面 ---
 if not st.session_state["logged_in"]:
   st.title("🔐 日報掲示板")
@@ -113,40 +118,37 @@ if not st.session_state["logged_in"]:
   display_pin = st.session_state["numpad_pin"].ljust(4, "〇")
   st.markdown(f"<h3 style='text-align: center; letter-spacing: 0.5em;'>{display_pin}</h3>", unsafe_allow_html=True)
 
-  # 【変更】テンキーを画面の1/3以下にするため、左右に余白（1.5）を置く
-  _, numpad_col, _ = st.columns([1.5, 1.2, 1.5])
-  with numpad_col:
-    col1, col2, col3 = st.columns(3)
-    with col1:
-      st.button("1", on_click=add_num, args=(1,), use_container_width=True)
-      st.button("4", on_click=add_num, args=(4,), use_container_width=True)
-      st.button("7", on_click=add_num, args=(7,), use_container_width=True)
-      st.button("C", on_click=clear_num, use_container_width=True) # クリアを「C」にしてコンパクトに
-    with col2:
-      st.button("2", on_click=add_num, args=(2,), use_container_width=True)
-      st.button("5", on_click=add_num, args=(5,), use_container_width=True)
-      st.button("8", on_click=add_num, args=(8,), use_container_width=True)
-      st.button("0", on_click=add_num, args=(0,), use_container_width=True)
-    with col3:
-      st.button("3", on_click=add_num, args=(3,), use_container_width=True)
-      st.button("6", on_click=add_num, args=(6,), use_container_width=True)
-      st.button("9", on_click=add_num, args=(9,), use_container_width=True)
+  # 【修正】テンキー周りの無駄な余白を消し、綺麗に3等分（スマホのキーパッド風）にする
+  col1, col2, col3 = st.columns(3)
+  with col1:
+    st.button("1", on_click=add_num, args=(1,), use_container_width=True)
+    st.button("4", on_click=add_num, args=(4,), use_container_width=True)
+    st.button("7", on_click=add_num, args=(7,), use_container_width=True)
+    st.button("C", on_click=clear_num, use_container_width=True)
+  with col2:
+    st.button("2", on_click=add_num, args=(2,), use_container_width=True)
+    st.button("5", on_click=add_num, args=(5,), use_container_width=True)
+    st.button("8", on_click=add_num, args=(8,), use_container_width=True)
+    st.button("0", on_click=add_num, args=(0,), use_container_width=True)
+  with col3:
+    st.button("3", on_click=add_num, args=(3,), use_container_width=True)
+    st.button("6", on_click=add_num, args=(6,), use_container_width=True)
+    st.button("9", on_click=add_num, args=(9,), use_container_width=True)
 
+  st.markdown("<br>", unsafe_allow_html=True)
+  
   final_pin = keyboard_pin if keyboard_pin else st.session_state["numpad_pin"]
 
-  # 【変更】ログインボタンもテンキーと同じ幅（1/3サイズ）の中央に揃える
-  _, btn_col, _ = st.columns([1.5, 1.2, 1.5])
-  with btn_col:
-    if st.button("ログインする", type="primary", use_container_width=True):
-      if final_pin == PLAYER_PIN:
-        st.session_state.update({"logged_in": True, "role": "player"})
-        st.rerun()
-      elif final_pin == ADMIN_PIN:
-        st.session_state.update({"logged_in": True, "role": "admin"})
-        st.rerun()
-      else:
-        st.error("パスワードが違います")
-        st.session_state["numpad_pin"] = ""
+  if st.button("ログインする", type="primary", use_container_width=True):
+    if final_pin == PLAYER_PIN:
+      st.session_state.update({"logged_in": True, "role": "player"})
+      st.rerun()
+    elif final_pin == ADMIN_PIN:
+      st.session_state.update({"logged_in": True, "role": "admin"})
+      st.rerun()
+    else:
+      st.error("パスワードが違います")
+      st.session_state["numpad_pin"] = ""
 
 # --- メイン画面 ---
 else:
@@ -154,7 +156,6 @@ else:
   data_changed = False
   current_now = datetime.now()
 
-  # 10日経過の自動アーカイブ処理
   for post in data:
     post_date = datetime.strptime(post["date"], "%Y/%m/%d %H:%M")
     if (current_now - post_date).days >= 10 and not post.get("archived", False):
@@ -172,7 +173,6 @@ else:
   # サイドバー（メニュー）
   with st.sidebar:
     st.title("📚 メニュー")
-    
     if st.button("🏠 最新のタイムライン", use_container_width=True, type="primary"):
         st.session_state["selected_tag"] = None
         st.rerun()
@@ -198,6 +198,7 @@ else:
     if st.button("🚪 ログアウト", use_container_width=True):
       st.session_state.update({"logged_in": False, "role": "", "numpad_pin": "", "selected_tag": None})
       st.rerun()
+
 
   # ⬇️ 【モードA】タグ検索結果の表示 ⬇️
   if st.session_state["selected_tag"]:
@@ -330,7 +331,9 @@ else:
               st.rerun()
           else:
             date_only = post["date"].split(" ")[0]
-            h_col1, h_col2, h_col3 = st.columns([10, 1, 1])
+            
+            # ヘッダー行の比率調整（10:1:1 だとボタンが潰れるため 6:1:1 に）
+            h_col1, h_col2, h_col3 = st.columns([6, 1, 1])
 
             with h_col1:
               st.subheader(post["title"])
@@ -363,10 +366,10 @@ else:
           if "reactions" not in post:
             post["reactions"] = {"👍": 0, "😊": 0, "❤️": 0, "😢": 0, "🏋️": 0}
 
-          # 【変更】リアクションを1/5以下のサイズにして横並びに（右側に巨大な余白を作る）
-          cols = st.columns([1, 1, 1, 1, 1, 5])
+          # 【修正】リアクションをきっちり5等分（1/5のサイズ）で並べる
+          cols = st.columns(5)
           emojis = ["👍", "😊", "❤️", "😢", "🏋️"]
-          for col, emoji in zip(cols[:5], emojis):
+          for col, emoji in zip(cols, emojis):
             count = post["reactions"].get(emoji, 0)
             with col:
               if st.button(f"{emoji} {count}", key=f"react_{emoji}_{post['id']}", use_container_width=True):
@@ -381,7 +384,6 @@ else:
             else:
               st.caption("今の状態を選んでタップ！（1回のみ）")
               
-              # 【変更】スマホでも文字が綺麗に収まるように少し短く調整
               f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(5)
               fatigue_options = [("1:元気", "1"), ("2:良好", "2"), ("3:普通", "3"), ("4:疲労", "4"), ("5:限界", "5")]
               for col, (label, val) in zip([f_col1, f_col2, f_col3, f_col4, f_col5], fatigue_options):
@@ -428,7 +430,7 @@ else:
                     st.session_state["edit_comment_id"] = None
                     st.rerun()
                 else:
-                  c_col1, c_col2, c_col3 = st.columns([10, 1, 1])
+                  c_col1, c_col2, c_col3 = st.columns([6, 1, 1])
                   with c_col1:
                     st.markdown(f"**{comment['name']}**   {comment['text']}")
 

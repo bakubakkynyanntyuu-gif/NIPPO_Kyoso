@@ -18,26 +18,47 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 st.set_page_config(page_title="日報掲示板", layout="centered")
 
 # ==========================================
-# 【最終調整】スマホ特化・横スクロール防止＆横並びCSS
+# 【最終奥義】スマホ特化・極小ボタン＆横並びCSS
 # ==========================================
 st.markdown("""
 <style>
-/* ボタンのパディング（内側の余白）を減らして、コンパクトに */
-.stButton > button {
-    padding: 0.2rem 0.2rem !important;
-    min-height: 2.5rem !important;
+/* 画面全体が横揺れするのを防ぐ */
+.block-container {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
 }
 
-/* スマホ画面での縦積みを解除し、画面幅にピタッと収める */
+/* 共通：ボタンの余白を少し削る */
+.stButton > button {
+    padding: 0.2rem 0.2rem !important;
+}
+
+/* スマホ (画面幅 640px 以下) のみの設定 */
 @media (max-width: 640px) {
+    /* 1. 列を絶対に横並びにし、隙間を限界までなくす */
     div[data-testid="stHorizontalBlock"] {
-        flex-wrap: nowrap !important; /* 絶対に横に並べる */
-        gap: 4px !important; /* ボタン同士の隙間を小さく */
+        flex-wrap: nowrap !important;
+        gap: 2px !important; 
     }
     div[data-testid="column"] {
-        min-width: 0 !important; /* 画面幅をオーバーするのを防ぐ */
-        width: auto !important;
-        flex: 1 1 0% !important; /* 指定した数（3列や5列）で均等に分割する */
+        min-width: 0 !important;
+        flex: 1 1 0% !important;
+    }
+    
+    /* 2. ボタン自体を物理的に小さくする */
+    .stButton > button {
+        padding: 0.1rem 0.1rem !important;
+        min-height: 2.2rem !important;
+        height: 100% !important;
+    }
+    
+    /* 3. ボタンの中の文字・絵文字を極小化し、折り返しを許可する */
+    .stButton > button p, .stButton > button div {
+        font-size: 0.7rem !important; /* 文字を小さくして横幅を節約 */
+        line-height: 1.1 !important;
+        white-space: normal !important; /* 「1:元気」などが2行に折り返されるようにする */
+        word-wrap: break-word !important;
+        margin: 0 !important;
     }
 }
 </style>
@@ -115,8 +136,8 @@ if not st.session_state["logged_in"]:
   display_pin = st.session_state["numpad_pin"].ljust(4, "〇")
   st.markdown(f"<h3 style='text-align: center; letter-spacing: 0.5em;'>{display_pin}</h3>", unsafe_allow_html=True)
 
-  # 【変更】余白（スペーサー）を廃止し、素直に3等分して画面幅に収める
-  col1, col2, col3 = st.columns(3)
+  # 【変更】gap="small" を追加してボタン間の隙間を狭くする
+  col1, col2, col3 = st.columns(3, gap="small")
   with col1:
     st.button("1", on_click=add_num, args=(1,), use_container_width=True)
     st.button("4", on_click=add_num, args=(4,), use_container_width=True)
@@ -258,7 +279,7 @@ else:
             post_main = st.text_area("本題 (具体的なメニューや内容)")
             
             st.markdown("**➕ タグを追加 (最大3つまで)**")
-            t_col1, t_col2, t_col3 = st.columns(3)
+            t_col1, t_col2, t_col3 = st.columns(3, gap="small")
             with t_col1: tag1 = st.text_input("タグ 1", placeholder="例: 試合前")
             with t_col2: tag2 = st.text_input("タグ 2", placeholder="例: 下半身")
             with t_col3: tag3 = st.text_input("タグ 3")
@@ -309,7 +330,7 @@ else:
             
             existing_tags = post.get("tags", [])
             st.markdown("**タグの編集**")
-            et_col1, et_col2, et_col3 = st.columns(3)
+            et_col1, et_col2, et_col3 = st.columns(3, gap="small")
             with et_col1: e_tag1 = st.text_input("タグ1", existing_tags[0] if len(existing_tags)>0 else "", key=f"et1_{post['id']}")
             with et_col2: e_tag2 = st.text_input("タグ2", existing_tags[1] if len(existing_tags)>1 else "", key=f"et2_{post['id']}")
             with et_col3: e_tag3 = st.text_input("タグ3", existing_tags[2] if len(existing_tags)>2 else "", key=f"et3_{post['id']}")
@@ -328,8 +349,7 @@ else:
           else:
             date_only = post["date"].split(" ")[0]
             
-            # 【変更】編集・削除ボタンが横並びで潰れないように比率を微調整
-            h_col1, h_col2, h_col3 = st.columns([7, 1.5, 1.5])
+            h_col1, h_col2, h_col3 = st.columns([7, 1.5, 1.5], gap="small")
 
             with h_col1:
               st.subheader(post["title"])
@@ -352,7 +372,7 @@ else:
             st.write(post["content"])
 
             if post.get("images"):
-              img_cols = st.columns(len(post["images"]))
+              img_cols = st.columns(len(post["images"]), gap="small")
               for idx, img_path in enumerate(post["images"]):
                 if os.path.exists(img_path):
                   with img_cols[idx]:
@@ -362,8 +382,8 @@ else:
           if "reactions" not in post:
             post["reactions"] = {"👍": 0, "😊": 0, "❤️": 0, "😢": 0, "🏋️": 0}
 
-          # 【変更】余白をなくし、素直に5等分して表示
-          cols = st.columns(5)
+          # 【変更】gap="small" を追加して5列をピタッと配置
+          cols = st.columns(5, gap="small")
           emojis = ["👍", "😊", "❤️", "😢", "🏋️"]
           for col, emoji in zip(cols, emojis):
             count = post["reactions"].get(emoji, 0)
@@ -380,8 +400,8 @@ else:
             else:
               st.caption("今の状態を選んでタップ！（1回のみ）")
               
-              # 【変更】ここも素直に5等分
-              f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(5)
+              # 【変更】gap="small" を追加
+              f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(5, gap="small")
               fatigue_options = [("1:元気", "1"), ("2:良好", "2"), ("3:普通", "3"), ("4:疲労", "4"), ("5:限界", "5")]
               for col, (label, val) in zip([f_col1, f_col2, f_col3, f_col4, f_col5], fatigue_options):
                 with col:
@@ -417,7 +437,7 @@ else:
               with st.chat_message("user", avatar=avatar_icon):
                 if st.session_state["edit_comment_id"] == c_id:
                   new_text = st.text_input("コメントを編集", comment["text"], key=f"ct_{c_id}")
-                  cc1, cc2 = st.columns(2)
+                  cc1, cc2 = st.columns(2, gap="small")
                   if cc1.button("保存", key=f"csave_{c_id}", type="primary"):
                     comment["text"] = new_text
                     st.session_state["edit_comment_id"] = None
@@ -427,7 +447,7 @@ else:
                     st.session_state["edit_comment_id"] = None
                     st.rerun()
                 else:
-                  c_col1, c_col2, c_col3 = st.columns([7, 1.5, 1.5])
+                  c_col1, c_col2, c_col3 = st.columns([7, 1.5, 1.5], gap="small")
                   with c_col1:
                     st.markdown(f"**{comment['name']}**   {comment['text']}")
 

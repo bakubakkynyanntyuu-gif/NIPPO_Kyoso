@@ -17,6 +17,32 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 
 st.set_page_config(page_title="日報掲示板", layout="centered")
 
+# ==========================================
+# 【新規追加】UIをスマホアプリらしくする魔法のCSS
+# ==========================================
+st.markdown("""
+<style>
+/* スマホ画面でカラムが縦積みになるのを防ぎ、横並びを強制する */
+@media (max-width: 640px) {
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+    }
+    [data-testid="column"] {
+        min-width: 0 !important;
+        width: auto !important;
+        flex: 1 1 0% !important;
+    }
+}
+
+/* 全体的なボタンの余白を削って、スマホでも押しやすいコンパクトサイズに */
+.stButton > button {
+    padding: 0.2rem 0.5rem !important;
+    min-height: 2.5rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 # --- データ読み書き ---
 def load_data():
   if not os.path.exists(DATA_FILE):
@@ -66,8 +92,8 @@ if "logged_in" not in st.session_state:
       "edit_comment_id": None,
       "omikuji_drawn": False,
       "fatigue_reported": {},
-      "selected_tag": None, # 【追加】選択中のタグ
-      "tag_page": 0         # 【追加】タグ一覧の現在のページ
+      "selected_tag": None,
+      "tag_page": 0
   })
 
 def add_num(num):
@@ -83,38 +109,44 @@ if not st.session_state["logged_in"]:
   keyboard_pin = st.text_input("⌨️ キーボード用", type="password", max_chars=4)
 
   st.markdown("---")
-  st.markdown("📱 **スマホ用テンキー**")
+  st.markdown("<div style='text-align: center;'>📱 <strong>スマホ用テンキー</strong></div>", unsafe_allow_html=True)
   display_pin = st.session_state["numpad_pin"].ljust(4, "〇")
-  st.subheader(f"入力: {display_pin}")
+  st.markdown(f"<h3 style='text-align: center; letter-spacing: 0.5em;'>{display_pin}</h3>", unsafe_allow_html=True)
 
-  col1, col2, col3 = st.columns(3)
-  with col1:
-    st.button("1", on_click=add_num, args=(1,), use_container_width=True)
-    st.button("4", on_click=add_num, args=(4,), use_container_width=True)
-    st.button("7", on_click=add_num, args=(7,), use_container_width=True)
-    st.button("クリア", on_click=clear_num, use_container_width=True)
-  with col2:
-    st.button("2", on_click=add_num, args=(2,), use_container_width=True)
-    st.button("5", on_click=add_num, args=(5,), use_container_width=True)
-    st.button("8", on_click=add_num, args=(8,), use_container_width=True)
-    st.button("0", on_click=add_num, args=(0,), use_container_width=True)
-  with col3:
-    st.button("3", on_click=add_num, args=(3,), use_container_width=True)
-    st.button("6", on_click=add_num, args=(6,), use_container_width=True)
-    st.button("9", on_click=add_num, args=(9,), use_container_width=True)
+  # 【変更】テンキーを画面の1/3以下にするため、左右に余白（1.5）を置く
+  _, numpad_col, _ = st.columns([1.5, 1.2, 1.5])
+  with numpad_col:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+      st.button("1", on_click=add_num, args=(1,), use_container_width=True)
+      st.button("4", on_click=add_num, args=(4,), use_container_width=True)
+      st.button("7", on_click=add_num, args=(7,), use_container_width=True)
+      st.button("C", on_click=clear_num, use_container_width=True) # クリアを「C」にしてコンパクトに
+    with col2:
+      st.button("2", on_click=add_num, args=(2,), use_container_width=True)
+      st.button("5", on_click=add_num, args=(5,), use_container_width=True)
+      st.button("8", on_click=add_num, args=(8,), use_container_width=True)
+      st.button("0", on_click=add_num, args=(0,), use_container_width=True)
+    with col3:
+      st.button("3", on_click=add_num, args=(3,), use_container_width=True)
+      st.button("6", on_click=add_num, args=(6,), use_container_width=True)
+      st.button("9", on_click=add_num, args=(9,), use_container_width=True)
 
   final_pin = keyboard_pin if keyboard_pin else st.session_state["numpad_pin"]
 
-  if st.button("ログインする", type="primary", use_container_width=True):
-    if final_pin == PLAYER_PIN:
-      st.session_state.update({"logged_in": True, "role": "player"})
-      st.rerun()
-    elif final_pin == ADMIN_PIN:
-      st.session_state.update({"logged_in": True, "role": "admin"})
-      st.rerun()
-    else:
-      st.error("パスワードが違います")
-      st.session_state["numpad_pin"] = ""
+  # 【変更】ログインボタンもテンキーと同じ幅（1/3サイズ）の中央に揃える
+  _, btn_col, _ = st.columns([1.5, 1.2, 1.5])
+  with btn_col:
+    if st.button("ログインする", type="primary", use_container_width=True):
+      if final_pin == PLAYER_PIN:
+        st.session_state.update({"logged_in": True, "role": "player"})
+        st.rerun()
+      elif final_pin == ADMIN_PIN:
+        st.session_state.update({"logged_in": True, "role": "admin"})
+        st.rerun()
+      else:
+        st.error("パスワードが違います")
+        st.session_state["numpad_pin"] = ""
 
 # --- メイン画面 ---
 else:
@@ -137,13 +169,10 @@ else:
   if data_changed:
     save_data(data)
 
-  # ==========================================
-  # 【新規追加】サイドバー（スマホでは左上の三本線メニューになります）
-  # ==========================================
+  # サイドバー（メニュー）
   with st.sidebar:
     st.title("📚 メニュー")
     
-    # ホームに戻るボタン
     if st.button("🏠 最新のタイムライン", use_container_width=True, type="primary"):
         st.session_state["selected_tag"] = None
         st.rerun()
@@ -151,7 +180,6 @@ else:
     st.markdown("---")
     st.markdown("**🏷️ タグで探す**")
     
-    # 全投稿からタグを抽出
     all_tags = []
     for p in data:
         all_tags.extend(p.get("tags", []))
@@ -171,23 +199,17 @@ else:
       st.session_state.update({"logged_in": False, "role": "", "numpad_pin": "", "selected_tag": None})
       st.rerun()
 
-  # ==========================================
-  # 画面の表示切り替え（タグ検索モード or 通常タイムライン）
-  # ==========================================
-  
   # ⬇️ 【モードA】タグ検索結果の表示 ⬇️
   if st.session_state["selected_tag"]:
       tag = st.session_state["selected_tag"]
       st.title(f"🏷️ 「{tag}」の投稿")
       st.caption("※タイトルと本文のみを表示しています")
       
-      # そのタグが含まれる投稿だけを抽出（アーカイブも含む）
       filtered_posts = [p for p in data if tag in p.get("tags", [])]
       
       if not filtered_posts:
           st.info("該当する投稿がありません。")
       else:
-          # ページング（5件ずつ表示）処理
           items_per_page = 5
           page = st.session_state["tag_page"]
           start_idx = page * items_per_page
@@ -200,7 +222,6 @@ else:
                   st.subheader(p["title"])
                   st.write(p["content"])
           
-          # 「次へ」「前へ」ボタン
           st.markdown("---")
           c1, c2, c3 = st.columns(3)
           with c1:
@@ -214,7 +235,7 @@ else:
                       st.session_state["tag_page"] += 1
                       st.rerun()
 
-  # ⬇️️ 【モードB】通常のタイムライン表示 ⬇️
+  # ⬇ 【モードB】通常のタイムライン表示 ⬇️
   else:
       col_title, col_omi = st.columns([6, 2])
       with col_title:
@@ -232,17 +253,13 @@ else:
           msg_area.empty()
           st.rerun()
 
-      # --- 新規投稿フォーム（管理者限定） ---
       if st.session_state["role"] == "admin":
         with st.expander("📝 新しい日報・お知らせを投稿", expanded=False):
           with st.form("new_post_form", clear_on_submit=True):
             post_title = st.text_input("タイトル")
-            
-            # 【変更】入力欄を導入と本題に分割
             post_intro = st.text_area("導入 (挨拶や背景など)")
             post_main = st.text_area("本題 (具体的なメニューや内容)")
             
-            # 【追加】タグ入力欄 (3つまで)
             st.markdown("**➕ タグを追加 (最大3つまで)**")
             t_col1, t_col2, t_col3 = st.columns(3)
             with t_col1: tag1 = st.text_input("タグ 1", placeholder="例: 試合前")
@@ -252,18 +269,13 @@ else:
             uploaded_files = st.file_uploader("画像を添付 (最大2枚まで)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
             if st.form_submit_button("投稿する"):
-                # 入力された内容がどちらかでもあれば投稿可能にする
                 if not post_intro and not post_main:
                     st.error("導入か本題のどちらかは入力してください。")
                 elif len(uploaded_files) > 2:
                     st.error("エラー: 画像は2枚までにしてください。")
                 else:
                     saved_image_paths = [save_uploaded_image(f) for f in uploaded_files]
-                    
-                    # 導入と本題を合体させる（間に空行を入れる）
                     merged_content = f"{post_intro}\n\n{post_main}".strip()
-                    
-                    # 空白ではないタグだけをリスト化
                     input_tags = [t.strip() for t in [tag1, tag2, tag3] if t.strip()]
 
                     new_post = {
@@ -271,7 +283,7 @@ else:
                         "date": datetime.now().strftime("%Y/%m/%d %H:%M"),
                         "title": post_title,
                         "content": merged_content,
-                        "tags": input_tags, # タグを保存
+                        "tags": input_tags,
                         "images": saved_image_paths,
                         "comments": [],
                         "reactions": {"👍": 0, "😊": 0, "❤️": 0, "😢": 0, "🏋️": 0},
@@ -296,11 +308,8 @@ else:
           if st.session_state["edit_post_id"] == post["id"]:
             st.info("✏️ 投稿を編集中")
             edit_title = st.text_input("タイトル", post["title"], key=f"et_{post['id']}")
-            
-            # 編集時はすでに合体しているので1つのテキストエリアで編集
             edit_content = st.text_area("本文", post["content"], key=f"ec_{post['id']}", height=150)
             
-            # タグの編集
             existing_tags = post.get("tags", [])
             st.markdown("**タグの編集**")
             et_col1, et_col2, et_col3 = st.columns(3)
@@ -338,7 +347,6 @@ else:
                   save_data(data)
                   st.rerun()
 
-            # 【追加】タグの表示
             if post.get("tags"):
                 st.markdown(" ".join([f"`🏷️{t}`" for t in post["tags"]]))
 
@@ -355,9 +363,10 @@ else:
           if "reactions" not in post:
             post["reactions"] = {"👍": 0, "😊": 0, "❤️": 0, "😢": 0, "🏋️": 0}
 
-          cols = st.columns(5)
+          # 【変更】リアクションを1/5以下のサイズにして横並びに（右側に巨大な余白を作る）
+          cols = st.columns([1, 1, 1, 1, 1, 5])
           emojis = ["👍", "😊", "❤️", "😢", "🏋️"]
-          for col, emoji in zip(cols, emojis):
+          for col, emoji in zip(cols[:5], emojis):
             count = post["reactions"].get(emoji, 0)
             with col:
               if st.button(f"{emoji} {count}", key=f"react_{emoji}_{post['id']}", use_container_width=True):
@@ -365,15 +374,16 @@ else:
                 save_data(data)
                 st.rerun()
 
-          # ワンタップ疲労度チェック（1回制限 ＆ グラフ化）
-          with st.expander("⚡ 今日の疲労度・コンディションを報告する"):
+          with st.expander("⚡ 今日のコンディションを報告する"):
             is_reported = st.session_state["fatigue_reported"].get(post['id'], False)
             if is_reported:
               st.success("今日のコンディション報告ありがとうございます！")
             else:
-              st.caption("今の状態を選んでタップ！（1回のみ選択可能）")
+              st.caption("今の状態を選んでタップ！（1回のみ）")
+              
+              # 【変更】スマホでも文字が綺麗に収まるように少し短く調整
               f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(5)
-              fatigue_options = [("1: 元気！", "1"), ("2: 良好", "2"), ("3: 普通", "3"), ("4: やや疲労", "4"), ("5: クタクタ", "5")]
+              fatigue_options = [("1:元気", "1"), ("2:良好", "2"), ("3:普通", "3"), ("4:疲労", "4"), ("5:限界", "5")]
               for col, (label, val) in zip([f_col1, f_col2, f_col3, f_col4, f_col5], fatigue_options):
                 with col:
                   if st.button(label, key=f"fatigue_{val}_{post['id']}", use_container_width=True):
@@ -387,13 +397,13 @@ else:
             if st.session_state["role"] == "admin" and post.get("fatigue_logs"):
               st.markdown("---")
               st.markdown("**📊 チームの疲労度傾向 (管理者用)**")
-              f_counts = {"1: 元気": 0, "2: 良好": 0, "3: 普通": 0, "4: やや疲労": 0, "5: クタクタ": 0}
+              f_counts = {"1: 元気": 0, "2: 良好": 0, "3: 普通": 0, "4: 疲労": 0, "5: 限界": 0}
               for log in post["fatigue_logs"]:
                 if log["level"] == "1": f_counts["1: 元気"] += 1
                 elif log["level"] == "2": f_counts["2: 良好"] += 1
                 elif log["level"] == "3": f_counts["3: 普通"] += 1
-                elif log["level"] == "4": f_counts["4: やや疲労"] += 1
-                elif log["level"] == "5": f_counts["5: クタクタ"] += 1
+                elif log["level"] == "4": f_counts["4: 疲労"] += 1
+                elif log["level"] == "5": f_counts["5: 限界"] += 1
               df_fatigue = pd.DataFrame(list(f_counts.values()), index=list(f_counts.keys()), columns=["人数"])
               st.bar_chart(df_fatigue)
 

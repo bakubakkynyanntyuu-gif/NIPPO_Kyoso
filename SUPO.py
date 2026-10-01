@@ -17,54 +17,6 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 
 st.set_page_config(page_title="日報掲示板", layout="centered")
 
-# ==========================================
-# 【最終奥義】スマホ特化・極小ボタン＆横並びCSS
-# ==========================================
-st.markdown("""
-<style>
-/* 画面全体が横揺れするのを防ぐ */
-.block-container {
-    overflow-x: hidden !important;
-    max-width: 100% !important;
-}
-
-/* 共通：ボタンの余白を少し削る */
-.stButton > button {
-    padding: 0.2rem 0.2rem !important;
-}
-
-/* スマホ (画面幅 640px 以下) のみの設定 */
-@media (max-width: 640px) {
-    /* 1. 列を絶対に横並びにし、隙間を限界までなくす */
-    div[data-testid="stHorizontalBlock"] {
-        flex-wrap: nowrap !important;
-        gap: 2px !important; 
-    }
-    div[data-testid="column"] {
-        min-width: 0 !important;
-        flex: 1 1 0% !important;
-    }
-    
-    /* 2. ボタン自体を物理的に小さくする */
-    .stButton > button {
-        padding: 0.1rem 0.1rem !important;
-        min-height: 2.2rem !important;
-        height: 100% !important;
-    }
-    
-    /* 3. ボタンの中の文字・絵文字を極小化し、折り返しを許可する */
-    .stButton > button p, .stButton > button div {
-        font-size: 0.7rem !important; /* 文字を小さくして横幅を節約 */
-        line-height: 1.1 !important;
-        white-space: normal !important; /* 「1:元気」などが2行に折り返されるようにする */
-        word-wrap: break-word !important;
-        margin: 0 !important;
-    }
-}
-</style>
-""", unsafe_allow_html=True)
-
-
 # --- データ読み書き ---
 def load_data():
   if not os.path.exists(DATA_FILE):
@@ -109,7 +61,6 @@ if "logged_in" not in st.session_state:
   st.session_state.update({
       "logged_in": False,
       "role": "",
-      "numpad_pin": "",
       "edit_post_id": None,
       "edit_comment_id": None,
       "omikuji_drawn": False,
@@ -118,54 +69,25 @@ if "logged_in" not in st.session_state:
       "tag_page": 0
   })
 
-def add_num(num):
-  if len(st.session_state["numpad_pin"]) < 4:
-    st.session_state["numpad_pin"] += str(num)
-def clear_num():
-  st.session_state["numpad_pin"] = ""
-
 
 # --- ログイン画面 ---
 if not st.session_state["logged_in"]:
   st.title("🔐 日報掲示板")
-  st.markdown("### パスワード入力")
-  keyboard_pin = st.text_input("⌨️ キーボード用", type="password", max_chars=4)
+  
+  with st.container(border=True):
+      st.markdown("### パスワード入力")
+      st.caption("チーム共有の4桁のパスワードを入力してください")
+      keyboard_pin = st.text_input("パスワード", type="password", max_chars=4, placeholder="****")
 
-  st.markdown("---")
-  st.markdown("<div style='text-align: center;'>📱 <strong>スマホ用テンキー</strong></div>", unsafe_allow_html=True)
-  display_pin = st.session_state["numpad_pin"].ljust(4, "〇")
-  st.markdown(f"<h3 style='text-align: center; letter-spacing: 0.5em;'>{display_pin}</h3>", unsafe_allow_html=True)
-
-  # 【変更】gap="small" を追加してボタン間の隙間を狭くする
-  col1, col2, col3 = st.columns(3, gap="small")
-  with col1:
-    st.button("1", on_click=add_num, args=(1,), use_container_width=True)
-    st.button("4", on_click=add_num, args=(4,), use_container_width=True)
-    st.button("7", on_click=add_num, args=(7,), use_container_width=True)
-    st.button("C", on_click=clear_num, use_container_width=True)
-  with col2:
-    st.button("2", on_click=add_num, args=(2,), use_container_width=True)
-    st.button("5", on_click=add_num, args=(5,), use_container_width=True)
-    st.button("8", on_click=add_num, args=(8,), use_container_width=True)
-    st.button("0", on_click=add_num, args=(0,), use_container_width=True)
-  with col3:
-    st.button("3", on_click=add_num, args=(3,), use_container_width=True)
-    st.button("6", on_click=add_num, args=(6,), use_container_width=True)
-    st.button("9", on_click=add_num, args=(9,), use_container_width=True)
-
-  st.markdown("<br>", unsafe_allow_html=True)
-  final_pin = keyboard_pin if keyboard_pin else st.session_state["numpad_pin"]
-
-  if st.button("ログインする", type="primary", use_container_width=True):
-    if final_pin == PLAYER_PIN:
-      st.session_state.update({"logged_in": True, "role": "player"})
-      st.rerun()
-    elif final_pin == ADMIN_PIN:
-      st.session_state.update({"logged_in": True, "role": "admin"})
-      st.rerun()
-    else:
-      st.error("パスワードが違います")
-      st.session_state["numpad_pin"] = ""
+      if st.button("ログインする", type="primary", use_container_width=True):
+        if keyboard_pin == PLAYER_PIN:
+          st.session_state.update({"logged_in": True, "role": "player"})
+          st.rerun()
+        elif keyboard_pin == ADMIN_PIN:
+          st.session_state.update({"logged_in": True, "role": "admin"})
+          st.rerun()
+        else:
+          st.error("パスワードが違います")
 
 
 # --- メイン画面 ---
@@ -174,6 +96,7 @@ else:
   data_changed = False
   current_now = datetime.now()
 
+  # 10日経過の自動アーカイブ処理
   for post in data:
     post_date = datetime.strptime(post["date"], "%Y/%m/%d %H:%M")
     if (current_now - post_date).days >= 10 and not post.get("archived", False):
@@ -214,7 +137,7 @@ else:
                 
     st.markdown("---")
     if st.button("🚪 ログアウト", use_container_width=True):
-      st.session_state.update({"logged_in": False, "role": "", "numpad_pin": "", "selected_tag": None})
+      st.session_state.update({"logged_in": False, "role": "", "selected_tag": None})
       st.rerun()
 
   # ⬇️ 【モードA】タグ検索結果の表示
@@ -279,7 +202,7 @@ else:
             post_main = st.text_area("本題 (具体的なメニューや内容)")
             
             st.markdown("**➕ タグを追加 (最大3つまで)**")
-            t_col1, t_col2, t_col3 = st.columns(3, gap="small")
+            t_col1, t_col2, t_col3 = st.columns(3)
             with t_col1: tag1 = st.text_input("タグ 1", placeholder="例: 試合前")
             with t_col2: tag2 = st.text_input("タグ 2", placeholder="例: 下半身")
             with t_col3: tag3 = st.text_input("タグ 3")
@@ -304,7 +227,7 @@ else:
                         "tags": input_tags,
                         "images": saved_image_paths,
                         "comments": [],
-                        "reactions": {"👍": 0, "😊": 0, "❤️": 0, "😢": 0, "🏋️": 0},
+                        "reactions": {"👍": 0, "😢": 0, "🏋️": 0},
                         "fatigue_logs": [],
                         "archived": False,
                     }
@@ -330,7 +253,7 @@ else:
             
             existing_tags = post.get("tags", [])
             st.markdown("**タグの編集**")
-            et_col1, et_col2, et_col3 = st.columns(3, gap="small")
+            et_col1, et_col2, et_col3 = st.columns(3)
             with et_col1: e_tag1 = st.text_input("タグ1", existing_tags[0] if len(existing_tags)>0 else "", key=f"et1_{post['id']}")
             with et_col2: e_tag2 = st.text_input("タグ2", existing_tags[1] if len(existing_tags)>1 else "", key=f"et2_{post['id']}")
             with et_col3: e_tag3 = st.text_input("タグ3", existing_tags[2] if len(existing_tags)>2 else "", key=f"et3_{post['id']}")
@@ -349,8 +272,7 @@ else:
           else:
             date_only = post["date"].split(" ")[0]
             
-            h_col1, h_col2, h_col3 = st.columns([7, 1.5, 1.5], gap="small")
-
+            h_col1, h_col2, h_col3 = st.columns([7, 1.5, 1.5])
             with h_col1:
               st.subheader(post["title"])
               st.markdown(f"**{date_only}**")
@@ -372,27 +294,28 @@ else:
             st.write(post["content"])
 
             if post.get("images"):
-              img_cols = st.columns(len(post["images"]), gap="small")
+              img_cols = st.columns(len(post["images"]))
               for idx, img_path in enumerate(post["images"]):
                 if os.path.exists(img_path):
                   with img_cols[idx]:
                     st.image(img_path, use_container_width=True)
 
           st.markdown("---")
+          
+          # 【変更】リアクションを縦並びに（3種類に厳選）
           if "reactions" not in post:
-            post["reactions"] = {"👍": 0, "😊": 0, "❤️": 0, "😢": 0, "🏋️": 0}
+            post["reactions"] = {"👍": 0, "😢": 0, "🏋️": 0}
 
-          # 【変更】gap="small" を追加して5列をピタッと配置
-          cols = st.columns(5, gap="small")
-          emojis = ["👍", "😊", "❤️", "😢", "🏋️"]
-          for col, emoji in zip(cols, emojis):
+          st.markdown("**リアクション**")
+          emojis = ["👍", "😢", "🏋️"]
+          for emoji in emojis:
             count = post["reactions"].get(emoji, 0)
-            with col:
-              if st.button(f"{emoji} {count}", key=f"react_{emoji}_{post['id']}", use_container_width=True):
-                post["reactions"][emoji] = count + 1
-                save_data(data)
-                st.rerun()
+            if st.button(f"{emoji} {count}", key=f"react_{emoji}_{post['id']}", use_container_width=True):
+              post["reactions"][emoji] = count + 1
+              save_data(data)
+              st.rerun()
 
+          st.markdown("---")
           with st.expander("⚡ 今日のコンディションを報告する"):
             is_reported = st.session_state["fatigue_reported"].get(post['id'], False)
             if is_reported:
@@ -400,18 +323,16 @@ else:
             else:
               st.caption("今の状態を選んでタップ！（1回のみ）")
               
-              # 【変更】gap="small" を追加
-              f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(5, gap="small")
-              fatigue_options = [("1:元気", "1"), ("2:良好", "2"), ("3:普通", "3"), ("4:疲労", "4"), ("5:限界", "5")]
-              for col, (label, val) in zip([f_col1, f_col2, f_col3, f_col4, f_col5], fatigue_options):
-                with col:
-                  if st.button(label, key=f"fatigue_{val}_{post['id']}", use_container_width=True):
-                    if "fatigue_logs" not in post: post["fatigue_logs"] = []
-                    post["fatigue_logs"].append({"level": val, "time": datetime.now().strftime("%m/%d %H:%M")})
-                    st.session_state["fatigue_reported"][post['id']] = True
-                    save_data(data)
-                    st.toast(f"疲労度『{label}』を記録しました！お疲れ様です！", icon="✅")
-                    st.rerun()
+              # 【変更】疲労度を縦並びに
+              fatigue_options = [("1: 元気！", "1"), ("2: 良好", "2"), ("3: 普通", "3"), ("4: 疲労", "4"), ("5: 限界", "5")]
+              for label, val in fatigue_options:
+                if st.button(label, key=f"fatigue_{val}_{post['id']}", use_container_width=True):
+                  if "fatigue_logs" not in post: post["fatigue_logs"] = []
+                  post["fatigue_logs"].append({"level": val, "time": datetime.now().strftime("%m/%d %H:%M")})
+                  st.session_state["fatigue_reported"][post['id']] = True
+                  save_data(data)
+                  st.toast(f"疲労度『{label}』を記録しました！お疲れ様です！", icon="✅")
+                  st.rerun()
 
             if st.session_state["role"] == "admin" and post.get("fatigue_logs"):
               st.markdown("---")
@@ -437,7 +358,7 @@ else:
               with st.chat_message("user", avatar=avatar_icon):
                 if st.session_state["edit_comment_id"] == c_id:
                   new_text = st.text_input("コメントを編集", comment["text"], key=f"ct_{c_id}")
-                  cc1, cc2 = st.columns(2, gap="small")
+                  cc1, cc2 = st.columns(2)
                   if cc1.button("保存", key=f"csave_{c_id}", type="primary"):
                     comment["text"] = new_text
                     st.session_state["edit_comment_id"] = None
@@ -447,7 +368,7 @@ else:
                     st.session_state["edit_comment_id"] = None
                     st.rerun()
                 else:
-                  c_col1, c_col2, c_col3 = st.columns([7, 1.5, 1.5], gap="small")
+                  c_col1, c_col2, c_col3 = st.columns([7, 1.5, 1.5])
                   with c_col1:
                     st.markdown(f"**{comment['name']}**   {comment['text']}")
 

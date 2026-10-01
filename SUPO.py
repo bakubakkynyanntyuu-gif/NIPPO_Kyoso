@@ -18,30 +18,27 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 st.set_page_config(page_title="日報掲示板", layout="centered")
 
 # ==========================================
-# 【修正】スマホ特化・横スクロール防止CSS
+# 【最終調整】スマホ特化・横スクロール防止＆横並びCSS
 # ==========================================
 st.markdown("""
 <style>
-/* 画面外へのはみ出し（横スクロール）を完全に防止 */
-.block-container {
-    overflow-x: hidden !important;
-    max-width: 100% !important;
-}
-
-/* スマホ画面での縦積みを解除し、指定した比率（3等分や5等分）を維持する */
-@media (max-width: 640px) {
-    div[data-testid="column"] {
-        min-width: 0 !important; /* Streamlitの「スマホは全部横幅100%」という強制ルールを解除 */
-    }
-    div[data-testid="stHorizontalBlock"] {
-        flex-wrap: wrap !important; /* 万が一はみ出した場合は折り返す */
-    }
-}
-
-/* ボタンの余白を削り、スマホで押しやすくスタイリッシュなサイズに */
+/* ボタンのパディング（内側の余白）を減らして、コンパクトに */
 .stButton > button {
-    padding: 0.3rem 0.2rem !important;
+    padding: 0.2rem 0.2rem !important;
     min-height: 2.5rem !important;
+}
+
+/* スマホ画面での縦積みを解除し、画面幅にピタッと収める */
+@media (max-width: 640px) {
+    div[data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important; /* 絶対に横に並べる */
+        gap: 4px !important; /* ボタン同士の隙間を小さく */
+    }
+    div[data-testid="column"] {
+        min-width: 0 !important; /* 画面幅をオーバーするのを防ぐ */
+        width: auto !important;
+        flex: 1 1 0% !important; /* 指定した数（3列や5列）で均等に分割する */
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -118,7 +115,7 @@ if not st.session_state["logged_in"]:
   display_pin = st.session_state["numpad_pin"].ljust(4, "〇")
   st.markdown(f"<h3 style='text-align: center; letter-spacing: 0.5em;'>{display_pin}</h3>", unsafe_allow_html=True)
 
-  # 【修正】テンキー周りの無駄な余白を消し、綺麗に3等分（スマホのキーパッド風）にする
+  # 【変更】余白（スペーサー）を廃止し、素直に3等分して画面幅に収める
   col1, col2, col3 = st.columns(3)
   with col1:
     st.button("1", on_click=add_num, args=(1,), use_container_width=True)
@@ -136,7 +133,6 @@ if not st.session_state["logged_in"]:
     st.button("9", on_click=add_num, args=(9,), use_container_width=True)
 
   st.markdown("<br>", unsafe_allow_html=True)
-  
   final_pin = keyboard_pin if keyboard_pin else st.session_state["numpad_pin"]
 
   if st.button("ログインする", type="primary", use_container_width=True):
@@ -149,6 +145,7 @@ if not st.session_state["logged_in"]:
     else:
       st.error("パスワードが違います")
       st.session_state["numpad_pin"] = ""
+
 
 # --- メイン画面 ---
 else:
@@ -199,8 +196,7 @@ else:
       st.session_state.update({"logged_in": False, "role": "", "numpad_pin": "", "selected_tag": None})
       st.rerun()
 
-
-  # ⬇️ 【モードA】タグ検索結果の表示 ⬇️
+  # ⬇️ 【モードA】タグ検索結果の表示
   if st.session_state["selected_tag"]:
       tag = st.session_state["selected_tag"]
       st.title(f"🏷️ 「{tag}」の投稿")
@@ -236,7 +232,7 @@ else:
                       st.session_state["tag_page"] += 1
                       st.rerun()
 
-  # ⬇ 【モードB】通常のタイムライン表示 ⬇️
+  # ⬇ 【モードB】通常のタイムライン表示
   else:
       col_title, col_omi = st.columns([6, 2])
       with col_title:
@@ -332,8 +328,8 @@ else:
           else:
             date_only = post["date"].split(" ")[0]
             
-            # ヘッダー行の比率調整（10:1:1 だとボタンが潰れるため 6:1:1 に）
-            h_col1, h_col2, h_col3 = st.columns([6, 1, 1])
+            # 【変更】編集・削除ボタンが横並びで潰れないように比率を微調整
+            h_col1, h_col2, h_col3 = st.columns([7, 1.5, 1.5])
 
             with h_col1:
               st.subheader(post["title"])
@@ -366,7 +362,7 @@ else:
           if "reactions" not in post:
             post["reactions"] = {"👍": 0, "😊": 0, "❤️": 0, "😢": 0, "🏋️": 0}
 
-          # 【修正】リアクションをきっちり5等分（1/5のサイズ）で並べる
+          # 【変更】余白をなくし、素直に5等分して表示
           cols = st.columns(5)
           emojis = ["👍", "😊", "❤️", "😢", "🏋️"]
           for col, emoji in zip(cols, emojis):
@@ -384,6 +380,7 @@ else:
             else:
               st.caption("今の状態を選んでタップ！（1回のみ）")
               
+              # 【変更】ここも素直に5等分
               f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(5)
               fatigue_options = [("1:元気", "1"), ("2:良好", "2"), ("3:普通", "3"), ("4:疲労", "4"), ("5:限界", "5")]
               for col, (label, val) in zip([f_col1, f_col2, f_col3, f_col4, f_col5], fatigue_options):
@@ -430,7 +427,7 @@ else:
                     st.session_state["edit_comment_id"] = None
                     st.rerun()
                 else:
-                  c_col1, c_col2, c_col3 = st.columns([6, 1, 1])
+                  c_col1, c_col2, c_col3 = st.columns([7, 1.5, 1.5])
                   with c_col1:
                     st.markdown(f"**{comment['name']}**   {comment['text']}")
 

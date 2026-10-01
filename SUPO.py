@@ -122,8 +122,10 @@ else:
     st.markdown("**🏷️ タグで探す**")
     
     all_tags = []
+    # 【変更】公開済みの投稿からのみタグを抽出
     for p in data:
-        all_tags.extend(p.get("tags", []))
+        if p.get("status", "published") == "published" and not p.get("archived", False):
+            all_tags.extend(p.get("tags", []))
     unique_tags = sorted(list(set(all_tags)))
     
     if not unique_tags:
@@ -140,13 +142,15 @@ else:
       st.session_state.update({"logged_in": False, "role": "", "selected_tag": None})
       st.rerun()
 
+
   # ⬇️ 【モードA】タグ検索結果の表示
   if st.session_state["selected_tag"]:
       tag = st.session_state["selected_tag"]
       st.title(f"🏷️ 「{tag}」の投稿")
       st.caption("※タイトルと本文のみを表示しています")
       
-      filtered_posts = [p for p in data if tag in p.get("tags", [])]
+      # 【変更】ストック（下書き）以外の投稿だけを表示
+      filtered_posts = [p for p in data if tag in p.get("tags", []) and p.get("status", "published") == "published"]
       
       if not filtered_posts:
           st.info("該当する投稿がありません。")
@@ -175,6 +179,7 @@ else:
                   if st.button("次の5件 ▶", use_container_width=True):
                       st.session_state["tag_page"] += 1
                       st.rerun()
+
 
   # ⬇ 【モードB】通常のタイムライン表示
   else:
@@ -209,7 +214,10 @@ else:
 
             uploaded_files = st.file_uploader("画像を添付 (最大2枚まで)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-            if st.form_submit_button("投稿する"):
+            # 【変更】公開かストックかを選べるようにする
+            post_status = st.radio("公開設定", ["いますぐ公開", "下書き（ストック）として保存"], horizontal=True)
+
+            if st.form_submit_button("実行する"):
                 if not post_intro and not post_main:
                     st.error("導入か本題のどちらかは入力してください。")
                 elif len(uploaded_files) > 2:
@@ -218,6 +226,9 @@ else:
                     saved_image_paths = [save_uploaded_image(f) for f in uploaded_files]
                     merged_content = f"{post_intro}\n\n{post_main}".strip()
                     input_tags = [t.strip() for t in [tag1, tag2, tag3] if t.strip()]
+
+                    # status に 'published' か 'draft' を設定
+                    status_val = "published" if post_status == "いますぐ公開" else "draft"
 
                     new_post = {
                         "id": datetime.now().strftime("%Y%m%d%H%M%S"),
@@ -230,19 +241,70 @@ else:
                         "reactions": {"👍": 0, "😢": 0, "🏋️": 0},
                         "fatigue_logs": [],
                         "archived": False,
+                        "status": status_val # 【追加】公開状態
                     }
                     data.insert(0, new_post)
                     save_data(data)
                     st.rerun()
 
-      st.divider()
+      # ==========================================
+      # 【新規追加】ストック（下書き）一覧エリア（管理者のみ表示）
+      # ==========================================
+      if st.session_state["role"] == "admin":
+          drafts = [p for p in data if p.get("status") == "draft" and not p.get("archived", False)]
+          if drafts:
+              st.markdown("### 📝 ストック（下書き）一覧")
+              for post in drafts:
+                  with st.container(border=True):
+                      # 編集モード
+                      if st.session_state["edit_post_id"] == post["id"]:
+                          st.info("✏️ ストックを編集中")
+                          edit_title = st.text_input("タイトル", post["title"], key=f"et_{post['id']}")
+                          edit_content = st.text_area("本文", post["content"], key=f"ec_{post['id']}", height=150)
+                          
+                          e_col1, e_col2 = st.columns(2)
+                          if e_col1.button("保存する", key=f"esave_{post['id']}", type="primary"):
+                              post["title"] = edit_title
+                              post["content"] = edit_content
+                              st.session_state["edit_post_id"] = None
+                              save_data(data)
+                              st.rerun()
+                          if e_col2.button("キャンセル", key=f"ecancel_{post['id']}"):
+                              st.session_state["edit_post_id"] = None
+                              st.rerun()
+                      else:
+                          st.markdown(f"**{post['title']}**")
+                          preview = post['content'][:40] + "..." if len(post['content']) > 40 else post['content']
+                          st.caption(f"内容プレビュー: {preview}")
+                          
+                          d_col1, d_col2, d_col3 = st.columns(3)
+                          with d_col1:
+                              # 【重要】ストックを公開するボタン
+                              if st.button("🚀 公開する", key=f"pub_{post['id']}", type="primary", use_container_width=True):
+                                  post["status"] = "published"
+                                  # 公開した瞬間の日時に更新する
+                                  post["date"] = datetime.now().strftime("%Y/%m/%d %H:%M")
+                                  save_data(data)
+                                  st.rerun()
+                          with d_col2:
+                              if st.button("✏️ 編集", key=f"d_edit_{post['id']}", use_container_width=True):
+                                  st.session_state["edit_post_id"] = post["id"]
+                                  st.rerun()
+                          with d_col3:
+                              if st.button("🗑️ 削除", key=f"d_del_{post['id']}", use_container_width=True):
+                                  data.remove(post)
+                                  save_data(data)
+                                  st.rerun()
+              st.divider()
 
-      active_posts_count = sum(1 for p in data if not p.get("archived", False))
+      # --- タイムライン（公開済みのみ表示） ---
+      active_posts_count = sum(1 for p in data if not p.get("archived", False) and p.get("status", "published") == "published")
       if active_posts_count == 0:
         st.info("最近の投稿はありません。")
 
       for i, post in enumerate(data):
-        if post.get("archived", False):
+        # アーカイブ済み、またはストック（下書き）の場合はタイムラインに出さない
+        if post.get("archived", False) or post.get("status", "published") == "draft":
           continue
 
         with st.container(border=True):
@@ -302,7 +364,6 @@ else:
 
           st.markdown("---")
           
-          # 【変更】リアクションを縦並びに（3種類に厳選）
           if "reactions" not in post:
             post["reactions"] = {"👍": 0, "😢": 0, "🏋️": 0}
 
@@ -323,7 +384,6 @@ else:
             else:
               st.caption("今の状態を選んでタップ！（1回のみ）")
               
-              # 【変更】疲労度を縦並びに
               fatigue_options = [("1: 元気！", "1"), ("2: 良好", "2"), ("3: 普通", "3"), ("4: 疲労", "4"), ("5: 限界", "5")]
               for label, val in fatigue_options:
                 if st.button(label, key=f"fatigue_{val}_{post['id']}", use_container_width=True):
@@ -407,9 +467,10 @@ else:
       st.subheader("📦 アーカイブ (過去の投稿)")
       with st.expander("日付を選んで過去の日報を見る"):
         selected_date = st.date_input("表示する日付を選択してください")
+        # 【変更】ストック以外の過去投稿を探す
         archived_posts = [
             p for p in data
-            if p.get("archived", False) and datetime.strptime(p["date"], "%Y/%m/%d %H:%M").date() == selected_date
+            if p.get("archived", False) and p.get("status", "published") == "published" and datetime.strptime(p["date"], "%Y/%m/%d %H:%M").date() == selected_date
         ]
 
         if not archived_posts:

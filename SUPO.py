@@ -17,15 +17,21 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 
 st.set_page_config(page_title="日報掲示板", layout="centered")
 
-# --- データ読み書き ---
+# --- データ読み書き（自動移行機能付き） ---
 def load_data():
   if not os.path.exists(DATA_FILE):
-    return []
+    return {"posts": [], "questions": []}
   try:
     with open(DATA_FILE, "r", encoding="utf-8") as f:
-      return json.load(f)
+      d = json.load(f)
+      # 昔のデータ（リスト形式）を新しい辞書形式に自動アップグレード
+      if isinstance(d, list):
+          return {"posts": d, "questions": []}
+      if "questions" not in d:
+          d["questions"] = []
+      return d
   except:
-    return []
+    return {"posts": [], "questions": []}
 
 def save_data(data):
   with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -66,14 +72,13 @@ if "logged_in" not in st.session_state:
       "omikuji_drawn": False,
       "fatigue_reported": {},
       "selected_tag": None,
-      "tag_page": 0
+      "tag_page": 0,
+      "page": "timeline" # 【追加】画面切り替え用（timeline or question_box）
   })
-
 
 # --- ログイン画面 ---
 if not st.session_state["logged_in"]:
   st.title("🔐 日報掲示板")
-  
   with st.container(border=True):
       st.markdown("### パスワード入力")
       st.caption("チーム共有の4桁のパスワードを入力してください")
@@ -81,14 +86,13 @@ if not st.session_state["logged_in"]:
 
       if st.button("ログインする", type="primary", use_container_width=True):
         if keyboard_pin == PLAYER_PIN:
-          st.session_state.update({"logged_in": True, "role": "player"})
+          st.session_state.update({"logged_in": True, "role": "player", "page": "timeline"})
           st.rerun()
         elif keyboard_pin == ADMIN_PIN:
-          st.session_state.update({"logged_in": True, "role": "admin"})
+          st.session_state.update({"logged_in": True, "role": "admin", "page": "timeline"})
           st.rerun()
         else:
           st.error("パスワードが違います")
-
 
 # --- メイン画面 ---
 else:
@@ -97,7 +101,7 @@ else:
   current_now = datetime.now()
 
   # 10日経過の自動アーカイブ処理
-  for post in data:
+  for post in data["posts"]:
     post_date = datetime.strptime(post["date"], "%Y/%m/%d %H:%M")
     if (current_now - post_date).days >= 10 and not post.get("archived", False):
       post["archived"] = True
@@ -111,10 +115,29 @@ else:
   if data_changed:
     save_data(data)
 
+  # ==========================================
   # サイドバー（メニュー）
+  # ==========================================
   with st.sidebar:
     st.title("📚 メニュー")
-    if st.button("🏠 最新のタイムライン", use_container_width=True, type="primary"):
+    
+    # ページ切り替え：タイムライン
+    is_tl = (st.session_state["page"] == "timeline" and st.session_state["selected_tag"] is None)
+    if st.button("🏠 タイムライン", use_container_width=True, type="primary" if is_tl else "secondary"):
+        st.session_state["page"] = "timeline"
+        st.session_state["selected_tag"] = None
+        st.rerun()
+        
+    # ページ切り替え：個別質問箱
+    # 管理者の場合は未対応の件数をバッジとして表示
+    q_label = "📩 個別質問箱"
+    unresolved_count = sum(1 for q in data["questions"] if not q.get("resolved", False))
+    if st.session_state["role"] == "admin" and unresolved_count > 0:
+        q_label = f"📩 個別質問箱 ({unresolved_count})"
+        
+    is_qb = (st.session_state["page"] == "question_box")
+    if st.button(q_label, use_container_width=True, type="primary" if is_qb else "secondary"):
+        st.session_state["page"] = "question_box"
         st.session_state["selected_tag"] = None
         st.rerun()
     
@@ -122,8 +145,7 @@ else:
     st.markdown("**🏷️ タグで探す**")
     
     all_tags = []
-    # 公開済みの投稿からのみタグを抽出
-    for p in data:
+    for p in data["posts"]:
         if p.get("status", "published") == "published" and not p.get("archived", False):
             all_tags.extend(p.get("tags", []))
     unique_tags = sorted(list(set(all_tags)))
@@ -132,7 +154,9 @@ else:
         st.caption("まだタグがありません")
     else:
         for t in unique_tags:
-            if st.button(f"・{t}", key=f"side_tag_{t}", use_container_width=True):
+            is_tag = (st.session_state["selected_tag"] == t)
+            if st.button(f"・{t}", key=f"side_tag_{t}", use_container_width=True, type="primary" if is_tag else "secondary"):
+                st.session_state["page"] = "timeline"
                 st.session_state["selected_tag"] = t
                 st.session_state["tag_page"] = 0
                 st.rerun()
@@ -142,15 +166,89 @@ else:
       st.session_state.update({"logged_in": False, "role": "", "selected_tag": None})
       st.rerun()
 
+  # ==========================================
+  # ⬇️ 【新機能】個別質問箱 画面 ⬇️
+  # ==========================================
+  if st.session_state["page"] == "question_box":
+      st.title("📩 個別質問箱")
+      st.markdown("BAKUに直接相談・質問ができる専用フォームです。（他の選手には見えません）")
+      st.info("💡 **回答について**\n\nプライバシー保護のため、アプリ上ではなく**グラウンドで直接**、または**個別にLINE**でお答えします。")
 
-  # ⬇️ 【モードA】タグ検索結果の表示
-  if st.session_state["selected_tag"]:
+      # --- 管理者専用：チケット一覧 ---
+      if st.session_state["role"] == "admin":
+          unresolved_qs = [q for q in data["questions"] if not q.get("resolved", False)]
+          st.markdown(f"### 📋 未対応の相談チケット ({len(unresolved_qs)}件)")
+          
+          if not unresolved_qs:
+              st.success("現在、未対応の相談はありません。")
+          else:
+              for q in unresolved_qs:
+                  with st.container(border=True):
+                      st.markdown(f"**[{q['type']}]** 👤 **{q['name']}** さんより")
+                      st.caption(f"送信日時: {q['date']}")
+                      st.write(q['details'])
+                      
+                      if q.get("images"):
+                          img_cols = st.columns(len(q["images"]))
+                          for idx, img_p in enumerate(q["images"]):
+                              if os.path.exists(img_p):
+                                  with img_cols[idx]: st.image(img_p, use_container_width=True)
+                      
+                      # 対応完了ボタン（押すと画像も消去してアーカイブ化）
+                      if st.button("✅ 確認・対応完了にする", key=f"resolve_{q['id']}", type="primary"):
+                          q["resolved"] = True
+                          if q.get("images"):
+                              for img_p in q["images"]:
+                                  if os.path.exists(img_p):
+                                      try: os.remove(img_p)
+                                      except: pass
+                              q["images"] = []
+                          save_data(data)
+                          st.toast("チケットを完了しました！", icon="✅")
+                          st.rerun()
+          st.divider()
+
+      # --- 選手（管理者もテスト可）：質問送信フォーム ---
+      st.markdown("### ✍️ 新しく相談を送る")
+      with st.form("question_form", clear_on_submit=True):
+          q_name = st.text_input("名前（※本名で入力してください）")
+          q_type = st.selectbox("相談内容の種類", ["フォーム確認依頼", "メニュー相談", "その他"])
+          q_details = st.text_area("相談内容【詳細】", placeholder="※動画を見てほしい場合は、YouTube(限定公開)やGoogleドライブのURLをここに貼り付けてください！")
+          q_files = st.file_uploader("写真 (最大2枚まで)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+
+          if st.form_submit_button("送信する", type="primary"):
+              if not q_name:
+                  st.error("名前（本名）を入力してください。")
+              elif not q_details:
+                  st.error("相談内容を入力してください。")
+              elif len(q_files) > 2:
+                  st.error("写真は2枚までにしてください。")
+              else:
+                  saved_imgs = [save_uploaded_image(f) for f in q_files]
+                  new_q = {
+                      "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+                      "name": q_name.strip(),
+                      "type": q_type,
+                      "details": q_details.strip(),
+                      "images": saved_imgs,
+                      "date": datetime.now().strftime("%Y/%m/%d %H:%M"),
+                      "resolved": False
+                  }
+                  data["questions"].append(new_q)
+                  save_data(data)
+                  st.success("BAKUへ送信しました！直接またはLINEでの回答をお待ちください。")
+                  time.sleep(2)
+                  st.rerun()
+
+  # ==========================================
+  # ⬇️ 【モードA】タグ検索結果の表示 ⬇️
+  # ==========================================
+  elif st.session_state["selected_tag"]:
       tag = st.session_state["selected_tag"]
       st.title(f"🏷️ 「{tag}」の投稿")
       st.caption("※タイトルと本文のみを表示しています")
       
-      # ストック（下書き）以外の投稿だけを表示
-      filtered_posts = [p for p in data if tag in p.get("tags", []) and p.get("status", "published") == "published"]
+      filtered_posts = [p for p in data["posts"] if tag in p.get("tags", []) and p.get("status", "published") == "published"]
       
       if not filtered_posts:
           st.info("該当する投稿がありません。")
@@ -180,8 +278,9 @@ else:
                       st.session_state["tag_page"] += 1
                       st.rerun()
 
-
-  # ⬇ 【モードB】通常のタイムライン表示
+  # ==========================================
+  # ⬇ 【モードB】通常のタイムライン表示 ⬇️
+  # ==========================================
   else:
       col_title, col_omi = st.columns([6, 2])
       with col_title:
@@ -214,7 +313,6 @@ else:
 
             uploaded_files = st.file_uploader("画像を添付 (最大2枚まで)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-            # 公開かストックかを選べるようにする
             post_status = st.radio("公開設定", ["いますぐ公開", "下書き（ストック）として保存"], horizontal=True)
 
             if st.form_submit_button("実行する"):
@@ -242,13 +340,13 @@ else:
                         "archived": False,
                         "status": status_val
                     }
-                    data.insert(0, new_post)
+                    data["posts"].insert(0, new_post)
                     save_data(data)
                     st.rerun()
 
       # ストック（下書き）一覧エリア（管理者のみ表示）
       if st.session_state["role"] == "admin":
-          drafts = [p for p in data if p.get("status") == "draft" and not p.get("archived", False)]
+          drafts = [p for p in data["posts"] if p.get("status") == "draft" and not p.get("archived", False)]
           if drafts:
               st.markdown("### 📝 ストック（下書き）一覧")
               for post in drafts:
@@ -281,22 +379,22 @@ else:
                                   save_data(data)
                                   st.rerun()
                           with d_col2:
-                              if st.button("✏️️ 編集", key=f"d_edit_{post['id']}", use_container_width=True):
+                              if st.button("✏️ 編集", key=f"d_edit_{post['id']}", use_container_width=True):
                                   st.session_state["edit_post_id"] = post["id"]
                                   st.rerun()
                           with d_col3:
                               if st.button("🗑️ 削除", key=f"d_del_{post['id']}", use_container_width=True):
-                                  data.remove(post)
+                                  data["posts"].remove(post)
                                   save_data(data)
                                   st.rerun()
               st.divider()
 
       # --- タイムライン（公開済みのみ表示） ---
-      active_posts_count = sum(1 for p in data if not p.get("archived", False) and p.get("status", "published") == "published")
+      active_posts_count = sum(1 for p in data["posts"] if not p.get("archived", False) and p.get("status", "published") == "published")
       if active_posts_count == 0:
         st.info("最近の投稿はありません。")
 
-      for i, post in enumerate(data):
+      for i, post in enumerate(data["posts"]):
         if post.get("archived", False) or post.get("status", "published") == "draft":
           continue
 
@@ -339,7 +437,7 @@ else:
                   st.rerun()
               with h_col3:
                 if st.button("🗑️", key=f"p_del_{post['id']}", help="投稿を削除"):
-                  data.remove(post)
+                  data["posts"].remove(post)
                   save_data(data)
                   st.rerun()
 
@@ -361,7 +459,7 @@ else:
             post["reactions"] = {"👍": 0, "😢": 0, "🏋️": 0}
 
           st.markdown("**リアクション**")
-          emojis = ["👍", "😢", "🏋️"]
+          emojis = ["👍", "😢", "🏋️️"]
           for emoji in emojis:
             count = post["reactions"].get(emoji, 0)
             if st.button(f"{emoji} {count}", key=f"react_{emoji}_{post['id']}", use_container_width=True):
@@ -370,27 +468,17 @@ else:
               st.rerun()
 
           st.markdown("---")
-          # ==========================================
-          # 【変更】疲労度の見出しと7段階への対応
-          # ==========================================
           with st.expander("⚡ 練習前の疲労度チェック"):
             is_reported = st.session_state["fatigue_reported"].get(post['id'], False)
             if is_reported:
               st.success("今日のコンディション報告ありがとうございます！")
             else:
-              # 【追加】強調表示で質問文を入れる
               st.markdown("### **今日の練習前の疲労度は？？**")
               st.caption("今の状態を選んでタップ！（1回のみ）")
               
-              # 【変更】疲労度を7段階に変更（縦並び）
               fatigue_options = [
-                  ("1: 絶好調", "1"), 
-                  ("2: 元気", "2"), 
-                  ("3: 良好", "3"), 
-                  ("4: 普通", "4"), 
-                  ("5: やや疲労", "5"), 
-                  ("6: 疲労", "6"), 
-                  ("7: 限界", "7")
+                  ("1: 絶好調", "1"), ("2: 元気", "2"), ("3: 良好", "3"), 
+                  ("4: 普通", "4"), ("5: やや疲労", "5"), ("6: 疲労", "6"), ("7: 限界", "7")
               ]
               for label, val in fatigue_options:
                 if st.button(label, key=f"fatigue_{val}_{post['id']}", use_container_width=True):
@@ -404,7 +492,6 @@ else:
             if st.session_state["role"] == "admin" and post.get("fatigue_logs"):
               st.markdown("---")
               st.markdown("**📊 チームの疲労度傾向 (管理者用)**")
-              # 【変更】集計も7段階に対応
               f_counts = {"1: 絶好調": 0, "2: 元気": 0, "3: 良好": 0, "4: 普通": 0, "5: やや疲労": 0, "6: 疲労": 0, "7: 限界": 0}
               for log in post["fatigue_logs"]:
                 if log["level"] == "1": f_counts["1: 絶好調"] += 1
@@ -478,7 +565,7 @@ else:
       with st.expander("日付を選んで過去の日報を見る"):
         selected_date = st.date_input("表示する日付を選択してください")
         archived_posts = [
-            p for p in data
+            p for p in data["posts"]
             if p.get("archived", False) and p.get("status", "published") == "published" and datetime.strptime(p["date"], "%Y/%m/%d %H:%M").date() == selected_date
         ]
 

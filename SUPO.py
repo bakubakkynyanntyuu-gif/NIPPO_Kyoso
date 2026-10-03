@@ -122,7 +122,7 @@ else:
     st.markdown("**🏷️ タグで探す**")
     
     all_tags = []
-    # 【変更】公開済みの投稿からのみタグを抽出
+    # 公開済みの投稿からのみタグを抽出
     for p in data:
         if p.get("status", "published") == "published" and not p.get("archived", False):
             all_tags.extend(p.get("tags", []))
@@ -149,7 +149,7 @@ else:
       st.title(f"🏷️ 「{tag}」の投稿")
       st.caption("※タイトルと本文のみを表示しています")
       
-      # 【変更】ストック（下書き）以外の投稿だけを表示
+      # ストック（下書き）以外の投稿だけを表示
       filtered_posts = [p for p in data if tag in p.get("tags", []) and p.get("status", "published") == "published"]
       
       if not filtered_posts:
@@ -214,7 +214,7 @@ else:
 
             uploaded_files = st.file_uploader("画像を添付 (最大2枚まで)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-            # 【変更】公開かストックかを選べるようにする
+            # 公開かストックかを選べるようにする
             post_status = st.radio("公開設定", ["いますぐ公開", "下書き（ストック）として保存"], horizontal=True)
 
             if st.form_submit_button("実行する"):
@@ -227,7 +227,6 @@ else:
                     merged_content = f"{post_intro}\n\n{post_main}".strip()
                     input_tags = [t.strip() for t in [tag1, tag2, tag3] if t.strip()]
 
-                    # status に 'published' か 'draft' を設定
                     status_val = "published" if post_status == "いますぐ公開" else "draft"
 
                     new_post = {
@@ -241,22 +240,19 @@ else:
                         "reactions": {"👍": 0, "😢": 0, "🏋️": 0},
                         "fatigue_logs": [],
                         "archived": False,
-                        "status": status_val # 【追加】公開状態
+                        "status": status_val
                     }
                     data.insert(0, new_post)
                     save_data(data)
                     st.rerun()
 
-      # ==========================================
-      # 【新規追加】ストック（下書き）一覧エリア（管理者のみ表示）
-      # ==========================================
+      # ストック（下書き）一覧エリア（管理者のみ表示）
       if st.session_state["role"] == "admin":
           drafts = [p for p in data if p.get("status") == "draft" and not p.get("archived", False)]
           if drafts:
               st.markdown("### 📝 ストック（下書き）一覧")
               for post in drafts:
                   with st.container(border=True):
-                      # 編集モード
                       if st.session_state["edit_post_id"] == post["id"]:
                           st.info("✏️ ストックを編集中")
                           edit_title = st.text_input("タイトル", post["title"], key=f"et_{post['id']}")
@@ -279,15 +275,13 @@ else:
                           
                           d_col1, d_col2, d_col3 = st.columns(3)
                           with d_col1:
-                              # 【重要】ストックを公開するボタン
                               if st.button("🚀 公開する", key=f"pub_{post['id']}", type="primary", use_container_width=True):
                                   post["status"] = "published"
-                                  # 公開した瞬間の日時に更新する
                                   post["date"] = datetime.now().strftime("%Y/%m/%d %H:%M")
                                   save_data(data)
                                   st.rerun()
                           with d_col2:
-                              if st.button("✏️ 編集", key=f"d_edit_{post['id']}", use_container_width=True):
+                              if st.button("✏️️ 編集", key=f"d_edit_{post['id']}", use_container_width=True):
                                   st.session_state["edit_post_id"] = post["id"]
                                   st.rerun()
                           with d_col3:
@@ -303,7 +297,6 @@ else:
         st.info("最近の投稿はありません。")
 
       for i, post in enumerate(data):
-        # アーカイブ済み、またはストック（下書き）の場合はタイムラインに出さない
         if post.get("archived", False) or post.get("status", "published") == "draft":
           continue
 
@@ -377,14 +370,28 @@ else:
               st.rerun()
 
           st.markdown("---")
-          with st.expander("⚡ 今日のコンディションを報告する"):
+          # ==========================================
+          # 【変更】疲労度の見出しと7段階への対応
+          # ==========================================
+          with st.expander("⚡ 練習前の疲労度チェック"):
             is_reported = st.session_state["fatigue_reported"].get(post['id'], False)
             if is_reported:
               st.success("今日のコンディション報告ありがとうございます！")
             else:
+              # 【追加】強調表示で質問文を入れる
+              st.markdown("### **今日の練習前の疲労度は？？**")
               st.caption("今の状態を選んでタップ！（1回のみ）")
               
-              fatigue_options = [("1: 元気！", "1"), ("2: 良好", "2"), ("3: 普通", "3"), ("4: 疲労", "4"), ("5: 限界", "5")]
+              # 【変更】疲労度を7段階に変更（縦並び）
+              fatigue_options = [
+                  ("1: 絶好調", "1"), 
+                  ("2: 元気", "2"), 
+                  ("3: 良好", "3"), 
+                  ("4: 普通", "4"), 
+                  ("5: やや疲労", "5"), 
+                  ("6: 疲労", "6"), 
+                  ("7: 限界", "7")
+              ]
               for label, val in fatigue_options:
                 if st.button(label, key=f"fatigue_{val}_{post['id']}", use_container_width=True):
                   if "fatigue_logs" not in post: post["fatigue_logs"] = []
@@ -397,13 +404,16 @@ else:
             if st.session_state["role"] == "admin" and post.get("fatigue_logs"):
               st.markdown("---")
               st.markdown("**📊 チームの疲労度傾向 (管理者用)**")
-              f_counts = {"1: 元気": 0, "2: 良好": 0, "3: 普通": 0, "4: 疲労": 0, "5: 限界": 0}
+              # 【変更】集計も7段階に対応
+              f_counts = {"1: 絶好調": 0, "2: 元気": 0, "3: 良好": 0, "4: 普通": 0, "5: やや疲労": 0, "6: 疲労": 0, "7: 限界": 0}
               for log in post["fatigue_logs"]:
-                if log["level"] == "1": f_counts["1: 元気"] += 1
-                elif log["level"] == "2": f_counts["2: 良好"] += 1
-                elif log["level"] == "3": f_counts["3: 普通"] += 1
-                elif log["level"] == "4": f_counts["4: 疲労"] += 1
-                elif log["level"] == "5": f_counts["5: 限界"] += 1
+                if log["level"] == "1": f_counts["1: 絶好調"] += 1
+                elif log["level"] == "2": f_counts["2: 元気"] += 1
+                elif log["level"] == "3": f_counts["3: 良好"] += 1
+                elif log["level"] == "4": f_counts["4: 普通"] += 1
+                elif log["level"] == "5": f_counts["5: やや疲労"] += 1
+                elif log["level"] == "6": f_counts["6: 疲労"] += 1
+                elif log["level"] == "7": f_counts["7: 限界"] += 1
               df_fatigue = pd.DataFrame(list(f_counts.values()), index=list(f_counts.keys()), columns=["人数"])
               st.bar_chart(df_fatigue)
 
@@ -467,7 +477,6 @@ else:
       st.subheader("📦 アーカイブ (過去の投稿)")
       with st.expander("日付を選んで過去の日報を見る"):
         selected_date = st.date_input("表示する日付を選択してください")
-        # 【変更】ストック以外の過去投稿を探す
         archived_posts = [
             p for p in data
             if p.get("archived", False) and p.get("status", "published") == "published" and datetime.strptime(p["date"], "%Y/%m/%d %H:%M").date() == selected_date
